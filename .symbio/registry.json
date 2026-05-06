@@ -1,0 +1,21 @@
+{
+  "files": [
+    "README.md",
+    "requirements.txt",
+    "setup.py",
+    "symbiopath/brain.py",
+    "symbiopath/main.py",
+    "symbiopath/__init__.py",
+    "symbiopath/core/genome.py",
+    "symbiopath/core/__init__.py",
+    "symbiopath/engines/olfactory.py",
+    "symbiopath/engines/resonator.py",
+    "symbiopath/engines/__init__.py",
+    "symbiopath.egg-info/dependency_links.txt",
+    "symbiopath.egg-info/entry_points.txt",
+    "symbiopath.egg-info/PKG-INFO",
+    "symbiopath.egg-info/requires.txt",
+    "symbiopath.egg-info/SOURCES.txt",
+    "symbiopath.egg-info/top_level.txt"
+  ]
+}

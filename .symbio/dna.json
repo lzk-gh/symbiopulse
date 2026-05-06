@@ -1,0 +1,6 @@
+{
+  "version": "1.0",
+  "rules": [
+    "DNA Constraint: Route cross-module state through explicit workspace contracts."
+  ]
+}

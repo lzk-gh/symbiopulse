@@ -1,0 +1,14 @@
+{
+  "symbiopulse/core/genome.py": {
+    "symbiopulse/core/auto.py": 2.5
+  },
+  "symbiopulse/engines/olfactory.py": {
+    "symbiopulse/engines/resonator.py": 2.5
+  },
+  "symbiopulse/engines/resonator.py": {
+    "symbiopulse/engines/olfactory.py": 2.5
+  },
+  "symbiopulse/core/auto.py": {
+    "symbiopulse/core/genome.py": 2.5
+  }
+}
