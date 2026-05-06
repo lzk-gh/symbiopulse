@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="symbiopulse",
-    version="0.1.10",
+    version="0.1.11",
     author="SymbioPath Contributors",
     author_email="maintainers@symbiopulse.io",
     description="Code context manager with evolutionary instinct for AI agents",

@@ -44,6 +44,12 @@ class TestAutoRuntime(unittest.TestCase):
         self.assertIn(".cursor/rules/symbiopulse.mdc", paths)
         self.assertIn(".github/copilot-instructions.md", paths)
 
+    def test_agent_protocols_require_sniff_before_native_search(self):
+        for protocol in agent_protocols():
+            self.assertIn("First call `sym_sniff(intent)`", protocol.content)
+            self.assertIn("before native file search", protocol.content)
+            self.assertIn("Do not ask whether to use SymbioPulse", protocol.content)
+
     @patch("symbiopulse.engines.olfactory.litellm", None)
     def test_injection_preserves_existing_user_protocol_content(self):
         user_content = "# Project Agent Rules\n\nKeep local architecture notes intact.\n"
