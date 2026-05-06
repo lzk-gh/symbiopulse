@@ -54,6 +54,28 @@ If a protocol file already exists in the user's project, SymbioPulse preserves t
 
 Content outside that block is never rewritten by protocol injection.
 
+## Runtime State
+
+SymbioPulse writes project-local memory under `.symbio/`:
+
+- `scents.json`: directory scent map.
+- `fingerprints.json`: structural directory fingerprints.
+- `synapses.json`: exact, antigen, and token task memories.
+- `relations.json`: file-to-file affinity graph.
+- `dna.json`: project constraints.
+- `skills.json`: learned file summaries.
+
+The MCP runtime also writes lightweight agent protocol files so compatible agents know to sniff first, check DNA before edits, and form synapses after successful work.
+
+## Architecture
+
+1. **Neural Core:** `.symbio` state, synapses, DNA, relations, and fingerprints.
+2. **Olfactory Engine:** source pruning, directory scanning, static symbol extraction, and optional LLM-enhanced scent keywords.
+3. **Resonator Engine:** file-level resonance ranking inside scented zones.
+4. **Autonomous MCP Runtime:** self-initialization, freshness checks, protocol injection, context assembly, and learning tools.
+
+There is no separate user-facing workflow or background watcher. MCP is the product surface.
+
 ## Installation
 
 ### Requirements
@@ -207,25 +229,3 @@ Cursor still injects the old protocol text
 ```powershell
 python -m pip install --upgrade build twine
 ```
-
-## Runtime State
-
-SymbioPulse writes project-local memory under `.symbio/`:
-
-- `scents.json`: directory scent map.
-- `fingerprints.json`: structural directory fingerprints.
-- `synapses.json`: exact, antigen, and token task memories.
-- `relations.json`: file-to-file affinity graph.
-- `dna.json`: project constraints.
-- `skills.json`: learned file summaries.
-
-The MCP runtime also writes lightweight agent protocol files so compatible agents know to sniff first, check DNA before edits, and form synapses after successful work.
-
-## Architecture
-
-1. **Neural Core:** `.symbio` state, synapses, DNA, relations, and fingerprints.
-2. **Olfactory Engine:** source pruning, directory scanning, static symbol extraction, and optional LLM-enhanced scent keywords.
-3. **Resonator Engine:** file-level resonance ranking inside scented zones.
-4. **Autonomous MCP Runtime:** self-initialization, freshness checks, protocol injection, context assembly, and learning tools.
-
-There is no separate user-facing workflow or background watcher. MCP is the product surface.
