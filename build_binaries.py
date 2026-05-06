@@ -1,10 +1,8 @@
-import os
-import sys
 import platform
 import subprocess
 
 def build_executables():
-    """Build standalone executables for the CLI and MCP Server using PyInstaller"""
+    """Build the standalone MCP server executable using PyInstaller."""
     print(f"Building for {platform.system()}...")
     
     # Common PyInstaller arguments
@@ -19,16 +17,6 @@ def build_executables():
         "--log-level=INFO"
     ]
     
-    # 1. Build CLI Binary (sym)
-    print("\n--- Building CLI (sym) ---")
-    cli_args = common_args + [
-        "--name", "sym" + (".exe" if platform.system() == "Windows" else ""),
-        "--console",
-        "symbiopulse/interfaces/cli.py"
-    ]
-    subprocess.run(cli_args, check=True)
-    
-    # 2. Build MCP Server Binary (sym-mcp)
     print("\n--- Building MCP Server (sym-mcp) ---")
     mcp_args = common_args + [
         "--name", "sym-mcp" + (".exe" if platform.system() == "Windows" else ""),
@@ -37,7 +25,7 @@ def build_executables():
     ]
     subprocess.run(mcp_args, check=True)
     
-    print("\n✅ Build complete! Executables are located in the 'dist' folder.")
+    print("\nBuild complete. Executables are located in the 'dist' folder.")
     print("You can distribute these files to users who do not have Python installed.")
 
 if __name__ == "__main__":

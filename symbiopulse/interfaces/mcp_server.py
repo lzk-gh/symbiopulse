@@ -25,9 +25,13 @@ mcp = FastMCP("SymbioPulse")
 @mcp.tool()
 async def sym_sniff(intent: str) -> str:
     """
-    [MANDATORY PRIMARY SEARCH] 
-    Call this to find the architectural 'scent' of a task.
-    If results are insufficient, find files manually AND CALL sym_form_synapse to teach me.
+    [MANDATORY FIRST STEP FOR CODEBASE TASKS]
+    Use this before native file search, grep, semantic search, file reads,
+    bug fixes, implementations, refactors, explanations, architecture questions,
+    or file-location requests. Pass the user's full request as intent.
+    Do not ask for confirmation when this tool is available.
+    If results are insufficient, continue manually and then call sym_form_synapse
+    with the files that mattered.
     """
     workspace, readiness = await asyncio.to_thread(ensure_workspace_ready)
     
@@ -109,8 +113,10 @@ async def sym_sniff(intent: str) -> str:
 @mcp.tool()
 async def sym_form_synapse(task: str, file_paths: List[str]) -> str:
     """
-    [CRITICAL] Record a successful task completion. 
-    Call this whenever you find the right files, especially if `sym_sniff` failed.
+    [MANDATORY FEEDBACK STEP]
+    Record the files that answered or solved a task. Call this after a correct
+    answer, code change, investigation, or manual fallback so future similar
+    requests can use direct project memory.
     """
     workspace, _ = await asyncio.to_thread(ensure_workspace_ready)
     
@@ -159,7 +165,11 @@ async def sym_fetch_dna() -> str:
 
 @mcp.tool()
 async def sym_check_dna(file_path: str) -> str:
-    """Validate modifications to a specific file against project DNA rules."""
+    """
+    [MANDATORY BEFORE EDITING]
+    Validate modifications to a specific file against project DNA rules before
+    writing, patching, formatting, moving, or deleting that file.
+    """
     workspace, _ = await asyncio.to_thread(ensure_workspace_ready)
     if not workspace.dna_rules:
         return "No DNA rules established. You may proceed."

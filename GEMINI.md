@@ -1,17 +1,22 @@
+<!-- symbiopulse:managed:start -->
 # SymbioPulse Autonomous MCP Protocol
 
-Audience: Gemini CLI.
+Audience: Gemini agents.
 
-This project uses SymbioPulse as the MCP-native memory and context layer. When the `symbiopulse` MCP server is available, use it as the first source of project context.
+This project uses SymbioPulse as the MCP-native memory and context layer. When the `symbiopulse` MCP server is available, use it automatically as the first source of project context.
 
-## Required Workflow
+## Mandatory Tool Use
 
-1. Call `sym_sniff(intent)` before broad manual search.
-2. Before editing a target file, call `sym_check_dna(file_path)`.
-3. After a correct solution, call `sym_form_synapse(task, file_paths)` with the files that mattered.
-4. When a reusable implementation fact is discovered, call `sym_add_skill(file_path, skill_summary)`.
-5. When a mistake creates a durable constraint, call `sym_add_dna(target, rule)`.
+For every codebase question, bug fix, implementation, refactor, explanation, architecture question, or file-location request in this workspace:
+
+1. First call `sym_sniff(intent)` with the user's full request before native file search, grep, semantic search, file reads, or broad code exploration.
+2. Do not ask whether to use SymbioPulse. Use it automatically when the `symbiopulse` MCP server is available.
+3. Before editing any target file, call `sym_check_dna(file_path)` for that exact path.
+4. After a correct answer, investigation, or code change, call `sym_form_synapse(task, file_paths)` with the files that mattered.
+5. When a reusable implementation fact is discovered, call `sym_add_skill(file_path, skill_summary)`.
+6. When a mistake creates a durable constraint, call `sym_add_dna(target, rule)`.
 
 ## Fallback
 
-If MCP tools are not available in the current client, proceed with native code search and mention that SymbioPulse was unavailable. Do not invent MCP results.
+If MCP tools are not available in the current client, state that SymbioPulse was unavailable, then proceed with native code search. If `sym_sniff` returns no useful target, continue with native search and still call `sym_form_synapse` after the relevant files are known. Do not invent MCP results.
+<!-- symbiopulse:managed:end -->

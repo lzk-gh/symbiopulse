@@ -36,7 +36,7 @@ SymbioPulse is not Cursor-specific. The MCP runtime writes lightweight protocol 
 | :--- | :--- |
 | Codex / OpenAI agents | `AGENTS.md` |
 | Claude Code | `CLAUDE.md` |
-| Gemini CLI | `GEMINI.md` |
+| Gemini agents | `GEMINI.md` |
 | Cursor | `.cursor/rules/symbiopulse.mdc`, `.cursorrules` |
 | GitHub Copilot | `.github/copilot-instructions.md` |
 | Windsurf | `.windsurfrules` |
@@ -44,27 +44,15 @@ SymbioPulse is not Cursor-specific. The MCP runtime writes lightweight protocol 
 
 Each file points the agent to the same MCP-first workflow: sniff first, check DNA before edits, form synapses after successful work, and record reusable skills or durable constraints.
 
-## Installation
+If a protocol file already exists in the user's project, SymbioPulse preserves the user's content and only appends or refreshes a marked managed block:
 
-### MCP Clients
-
-```json
-{
-  "mcpServers": {
-    "symbiopulse": {
-      "command": "uvx",
-      "args": ["symbiopulse", "sym-mcp"]
-    }
-  }
-}
+```markdown
+<!-- symbiopulse:managed:start -->
+...
+<!-- symbiopulse:managed:end -->
 ```
 
-### Local Development
-
-```bash
-pip install -e .
-sym-mcp
-```
+Content outside that block is never rewritten by protocol injection.
 
 ## Runtime State
 
@@ -86,4 +74,158 @@ The MCP runtime also writes lightweight agent protocol files so compatible agent
 3. **Resonator Engine:** file-level resonance ranking inside scented zones.
 4. **Autonomous MCP Runtime:** self-initialization, freshness checks, protocol injection, context assembly, and learning tools.
 
-There is no separate CLI workflow or background watcher. MCP is the product surface.
+There is no separate user-facing workflow or background watcher. MCP is the product surface.
+
+## Installation
+
+### Requirements
+
+- Python package runtime: `>=3.8`.
+- Verified development environment: Python `3.13.13` on Windows.
+- Recommended launcher for Cursor and other stdio MCP clients: `uvx` from `uv`.
+
+Install `uv` on Windows:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Restart Cursor after installing `uv` so the GUI process can see `uvx` on `PATH`.
+
+### Cursor / MCP Clients
+
+For a normal PyPI release:
+
+```json
+{
+  "mcpServers": {
+    "symbiopulse": {
+      "command": "uvx",
+      "args": ["--from", "symbiopulse", "sym-mcp"]
+    }
+  }
+}
+```
+
+For TestPyPI builds, pin the published test version and add PyPI as the dependency fallback:
+
+```json
+{
+  "mcpServers": {
+    "symbiopulse": {
+      "command": "uvx",
+      "args": [
+        "--index-url",
+        "https://test.pypi.org/simple/",
+        "--extra-index-url",
+        "https://pypi.org/simple/",
+        "--refresh",
+        "--from",
+        "symbiopulse==0.1.12",
+        "sym-mcp"
+      ]
+    }
+  }
+}
+```
+
+If Cursor cannot find `uvx`, use the absolute executable path returned by:
+
+```powershell
+Get-Command uvx
+```
+
+### Local Development
+
+```powershell
+pip install -e .
+sym-mcp
+```
+
+Enable optional LLM-enhanced semantic scent generation only when needed:
+
+```powershell
+pip install -e ".[semantic]"
+```
+
+The default package intentionally does not install `litellm`; static fingerprints and fallback keywords work without it, and first-run MCP startup stays lighter.
+
+### Build And Publish TestPyPI
+
+```powershell
+Remove-Item -Recurse -Force dist, build, *.egg-info
+python -m pip install --upgrade build twine
+python -m build
+python -m twine upload --repository testpypi dist/*
+```
+
+Install the test build manually:
+
+```powershell
+pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ symbiopulse==0.1.12
+```
+
+### Smoke Tests In Cursor
+
+After adding `.cursor/mcp.json`, ask Cursor to verify the server once:
+
+```text
+Use the symbiopulse MCP server to run sym_status and show the raw result.
+```
+
+Expected result shape:
+
+```text
+SymbioPulse Status:
+- Synapses: 0
+- DNA Rules: 0
+- Scent Zones: ...
+- Directory Fingerprints: ...
+- Skills: 0
+```
+
+Then test automatic usage without mentioning SymbioPulse:
+
+```text
+Find the authentication entry files in this project. Do not modify files.
+```
+
+Expected behavior: Cursor should run `sym_sniff` first, then continue with native search only if it needs more detail. After the answer, it should call `sym_form_synapse` with the files that mattered.
+
+Validate project rules:
+
+```text
+Record a project rule: page components must not access localStorage directly; use the storage service instead.
+```
+
+Then ask for a change that would violate it:
+
+```text
+Add direct localStorage access in a page component.
+```
+
+Expected behavior: before editing, the agent should call `sym_check_dna` and avoid violating the recorded DNA rule.
+
+### Troubleshooting
+
+`'uvx' is not recognized as an internal or external command`
+
+- Install `uv`, restart Cursor, or set `command` to the absolute `uvx.exe` path.
+
+Cursor logs dependency downloads as `[error]`
+
+- Lines like `Downloading pydantic-core`, `Downloading pywin32`, or `Downloaded pygments` are often install progress printed on stderr, not a server failure. Wait for the first install to finish and avoid repeated reloads.
+
+Cursor still injects the old protocol text
+
+- Pin the new version and include `--refresh` in the `uvx` args.
+- Run `sym_initialize` once so the managed protocol block is refreshed.
+- Check that `.cursor/rules/symbiopulse.mdc` contains `## Mandatory Tool Use`, not the old `## Required Workflow`.
+
+`pip` appears to hang and ends with `KeyboardInterrupt`
+
+- The command was interrupted before installation completed. Re-run it inside the activated virtual environment:
+
+```powershell
+python -m pip install --upgrade build twine
+```

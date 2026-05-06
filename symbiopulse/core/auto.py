@@ -13,6 +13,11 @@ class AgentProtocol:
     name: str
     path: str
     content: str
+    prefix: str = ""
+
+
+MANAGED_BLOCK_START = "<!-- symbiopulse:managed:start -->"
+MANAGED_BLOCK_END = "<!-- symbiopulse:managed:end -->"
 
 
 def agent_protocols() -> List[AgentProtocol]:
@@ -20,8 +25,8 @@ def agent_protocols() -> List[AgentProtocol]:
     return [
         AgentProtocol("Codex / OpenAI agents", "AGENTS.md", _markdown_protocol("Codex / OpenAI agents")),
         AgentProtocol("Claude Code", "CLAUDE.md", _markdown_protocol("Claude Code")),
-        AgentProtocol("Gemini CLI", "GEMINI.md", _markdown_protocol("Gemini CLI")),
-        AgentProtocol("Cursor rules", ".cursor/rules/symbiopulse.mdc", _cursor_mdc()),
+        AgentProtocol("Gemini agents", "GEMINI.md", _markdown_protocol("Gemini agents")),
+        AgentProtocol("Cursor rules", ".cursor/rules/symbiopulse.mdc", _markdown_protocol("Cursor"), _cursor_mdc_header()),
         AgentProtocol("Cursor legacy", ".cursorrules", _plain_rules_protocol()),
         AgentProtocol("GitHub Copilot", ".github/copilot-instructions.md", _markdown_protocol("GitHub Copilot")),
         AgentProtocol("Windsurf", ".windsurfrules", _plain_rules_protocol()),
@@ -33,7 +38,7 @@ def ensure_workspace_ready(root_dir: str = ".", force_scan: bool = False) -> Tup
     """
     Initializes the workspace and keeps the neural map fresh enough for MCP-only usage.
     This is intentionally callable from every MCP tool, so the developer does not need
-    a separate CLI watcher or bootstrap command.
+    a separate watcher or bootstrap command.
     """
     workspace = SymbioWorkspace(cwd=root_dir)
     if not workspace.is_initialized():
@@ -69,18 +74,50 @@ def ensure_workspace_ready(root_dir: str = ".", force_scan: bool = False) -> Tup
 
 
 def inject_agent_protocol(root_dir: str = ".") -> List[str]:
-    """Writes persistent instructions for mainstream agent coding clients."""
+    """Writes managed SymbioPulse instructions without replacing user-authored content."""
     written: List[str] = []
     for protocol in agent_protocols():
         target = Path(root_dir) / protocol.path
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            if not target.exists() or target.read_text(encoding="utf-8", errors="ignore") != protocol.content:
-                target.write_text(protocol.content, encoding="utf-8")
+            exists = target.exists()
+            current = target.read_text(encoding="utf-8", errors="ignore") if exists else ""
+            next_content = _merge_managed_protocol_block(
+                current=current,
+                protocol=protocol,
+                exists=exists,
+            )
+            if not exists or current != next_content:
+                target.write_text(next_content, encoding="utf-8")
             written.append(protocol.path)
         except Exception:
             continue
     return written
+
+
+def _merge_managed_protocol_block(current: str, protocol: AgentProtocol, exists: bool) -> str:
+    block = _managed_block(protocol.content)
+    if not exists or not current.strip():
+        return f"{protocol.prefix}{block}"
+
+    start = current.find(MANAGED_BLOCK_START)
+    end = current.find(MANAGED_BLOCK_END)
+    if start >= 0 and end >= start:
+        end += len(MANAGED_BLOCK_END)
+        suffix = current[end:]
+        if not suffix.strip():
+            suffix = ""
+        elif suffix.startswith("\r\n"):
+            suffix = suffix[2:]
+        elif suffix.startswith("\n"):
+            suffix = suffix[1:]
+        return f"{current[:start]}{block}{suffix}"
+
+    return f"{current.rstrip()}\n\n{block}"
+
+
+def _managed_block(content: str) -> str:
+    return f"{MANAGED_BLOCK_START}\n{content.rstrip()}\n{MANAGED_BLOCK_END}\n"
 
 
 def build_dna_context(workspace: SymbioWorkspace, limit: int = 12) -> str:
@@ -203,14 +240,13 @@ def _is_runtime_dir(rel_path: str) -> bool:
     return bool(parts & ignored)
 
 
-def _cursor_mdc() -> str:
+def _cursor_mdc_header() -> str:
     return (
         "---\n"
         "description: SymbioPulse autonomous MCP protocol\n"
         "globs: **/*\n"
         "alwaysApply: true\n"
         "---\n"
-        f"{_markdown_protocol('Cursor')}"
     )
 
 
@@ -219,28 +255,39 @@ def _markdown_protocol(agent_name: str) -> str:
         "# SymbioPulse Autonomous MCP Protocol\n\n"
         f"Audience: {agent_name}.\n\n"
         "This project uses SymbioPulse as the MCP-native memory and context layer. "
-        "When the `symbiopulse` MCP server is available, use it as the first source of project context.\n\n"
-        "## Required Workflow\n\n"
-        "1. Call `sym_sniff(intent)` before broad manual search.\n"
-        "2. Before editing a target file, call `sym_check_dna(file_path)`.\n"
-        "3. After a correct solution, call `sym_form_synapse(task, file_paths)` with the files that mattered.\n"
-        "4. When a reusable implementation fact is discovered, call `sym_add_skill(file_path, skill_summary)`.\n"
-        "5. When a mistake creates a durable constraint, call `sym_add_dna(target, rule)`.\n\n"
+        "When the `symbiopulse` MCP server is available, use it automatically as the first source of project context.\n\n"
+        "## Mandatory Tool Use\n\n"
+        "For every codebase question, bug fix, implementation, refactor, explanation, architecture question, "
+        "or file-location request in this workspace:\n\n"
+        "1. First call `sym_sniff(intent)` with the user's full request before native file search, grep, semantic search, "
+        "file reads, or broad code exploration.\n"
+        "2. Do not ask whether to use SymbioPulse. Use it automatically when the `symbiopulse` MCP server is available.\n"
+        "3. Before editing any target file, call `sym_check_dna(file_path)` for that exact path.\n"
+        "4. After a correct answer, investigation, or code change, call `sym_form_synapse(task, file_paths)` "
+        "with the files that mattered.\n"
+        "5. When a reusable implementation fact is discovered, call `sym_add_skill(file_path, skill_summary)`.\n"
+        "6. When a mistake creates a durable constraint, call `sym_add_dna(target, rule)`.\n\n"
         "## Fallback\n\n"
-        "If MCP tools are not available in the current client, proceed with native code search and mention that "
-        "SymbioPulse was unavailable. Do not invent MCP results.\n"
+        "If MCP tools are not available in the current client, state that SymbioPulse was unavailable, then proceed "
+        "with native code search. If `sym_sniff` returns no useful target, continue with native search and still call "
+        "`sym_form_synapse` after the relevant files are known. Do not invent MCP results.\n"
     )
 
 
 def _plain_rules_protocol() -> str:
     return (
         "SymbioPulse Autonomous MCP Protocol\n\n"
-        "Use the `symbiopulse` MCP server as the first source of project context when available.\n\n"
-        "Required workflow:\n"
-        "1. Call `sym_sniff(intent)` before broad manual search.\n"
-        "2. Before editing a target file, call `sym_check_dna(file_path)`.\n"
-        "3. After a correct solution, call `sym_form_synapse(task, file_paths)` with the files that mattered.\n"
-        "4. When a reusable implementation fact is discovered, call `sym_add_skill(file_path, skill_summary)`.\n"
-        "5. When a mistake creates a durable constraint, call `sym_add_dna(target, rule)`.\n\n"
-        "Fallback: if MCP tools are unavailable, use native code search and state that SymbioPulse was unavailable.\n"
+        "Use the `symbiopulse` MCP server automatically as the first source of project context when available.\n\n"
+        "Mandatory tool use:\n"
+        "1. First call `sym_sniff(intent)` with the user's full request before native file search, grep, semantic search, "
+        "file reads, or broad code exploration.\n"
+        "2. Do not ask whether to use SymbioPulse. Use it automatically when the MCP server is available.\n"
+        "3. Before editing any target file, call `sym_check_dna(file_path)` for that exact path.\n"
+        "4. After a correct answer, investigation, or code change, call `sym_form_synapse(task, file_paths)` "
+        "with the files that mattered.\n"
+        "5. When a reusable implementation fact is discovered, call `sym_add_skill(file_path, skill_summary)`.\n"
+        "6. When a mistake creates a durable constraint, call `sym_add_dna(target, rule)`.\n\n"
+        "Fallback: if MCP tools are unavailable, state that SymbioPulse was unavailable, then use native code search. "
+        "If `sym_sniff` returns no useful target, continue with native search and still call `sym_form_synapse` after "
+        "the relevant files are known. Do not invent MCP results.\n"
     )
