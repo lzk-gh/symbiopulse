@@ -13,6 +13,11 @@ class AgentProtocol:
     name: str
     path: str
     content: str
+    prefix: str = ""
+
+
+MANAGED_BLOCK_START = "<!-- symbiopulse:managed:start -->"
+MANAGED_BLOCK_END = "<!-- symbiopulse:managed:end -->"
 
 
 def agent_protocols() -> List[AgentProtocol]:
@@ -21,7 +26,7 @@ def agent_protocols() -> List[AgentProtocol]:
         AgentProtocol("Codex / OpenAI agents", "AGENTS.md", _markdown_protocol("Codex / OpenAI agents")),
         AgentProtocol("Claude Code", "CLAUDE.md", _markdown_protocol("Claude Code")),
         AgentProtocol("Gemini agents", "GEMINI.md", _markdown_protocol("Gemini agents")),
-        AgentProtocol("Cursor rules", ".cursor/rules/symbiopulse.mdc", _cursor_mdc()),
+        AgentProtocol("Cursor rules", ".cursor/rules/symbiopulse.mdc", _markdown_protocol("Cursor"), _cursor_mdc_header()),
         AgentProtocol("Cursor legacy", ".cursorrules", _plain_rules_protocol()),
         AgentProtocol("GitHub Copilot", ".github/copilot-instructions.md", _markdown_protocol("GitHub Copilot")),
         AgentProtocol("Windsurf", ".windsurfrules", _plain_rules_protocol()),
@@ -69,18 +74,43 @@ def ensure_workspace_ready(root_dir: str = ".", force_scan: bool = False) -> Tup
 
 
 def inject_agent_protocol(root_dir: str = ".") -> List[str]:
-    """Writes persistent instructions for mainstream agent coding clients."""
+    """Writes managed SymbioPulse instructions without replacing user-authored content."""
     written: List[str] = []
     for protocol in agent_protocols():
         target = Path(root_dir) / protocol.path
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            if not target.exists() or target.read_text(encoding="utf-8", errors="ignore") != protocol.content:
-                target.write_text(protocol.content, encoding="utf-8")
+            exists = target.exists()
+            current = target.read_text(encoding="utf-8", errors="ignore") if exists else ""
+            next_content = _merge_managed_protocol_block(
+                current=current,
+                protocol=protocol,
+                exists=exists,
+            )
+            if not exists or current != next_content:
+                target.write_text(next_content, encoding="utf-8")
             written.append(protocol.path)
         except Exception:
             continue
     return written
+
+
+def _merge_managed_protocol_block(current: str, protocol: AgentProtocol, exists: bool) -> str:
+    block = _managed_block(protocol.content)
+    if not exists or not current.strip():
+        return f"{protocol.prefix}{block}"
+
+    start = current.find(MANAGED_BLOCK_START)
+    end = current.find(MANAGED_BLOCK_END)
+    if start >= 0 and end >= start:
+        end += len(MANAGED_BLOCK_END)
+        return f"{current[:start]}{block}{current[end:]}"
+
+    return f"{current.rstrip()}\n\n{block}"
+
+
+def _managed_block(content: str) -> str:
+    return f"{MANAGED_BLOCK_START}\n{content.rstrip()}\n{MANAGED_BLOCK_END}\n"
 
 
 def build_dna_context(workspace: SymbioWorkspace, limit: int = 12) -> str:
@@ -203,14 +233,13 @@ def _is_runtime_dir(rel_path: str) -> bool:
     return bool(parts & ignored)
 
 
-def _cursor_mdc() -> str:
+def _cursor_mdc_header() -> str:
     return (
         "---\n"
         "description: SymbioPulse autonomous MCP protocol\n"
         "globs: **/*\n"
         "alwaysApply: true\n"
         "---\n"
-        f"{_markdown_protocol('Cursor')}"
     )
 
 

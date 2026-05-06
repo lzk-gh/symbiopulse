@@ -3,6 +3,7 @@ description: SymbioPulse autonomous MCP protocol
 globs: **/*
 alwaysApply: true
 ---
+<!-- symbiopulse:managed:start -->
 # SymbioPulse Autonomous MCP Protocol
 
 Audience: Cursor.
@@ -20,3 +21,4 @@ This project uses SymbioPulse as the MCP-native memory and context layer. When t
 ## Fallback
 
 If MCP tools are not available in the current client, proceed with native code search and mention that SymbioPulse was unavailable. Do not invent MCP results.
+<!-- symbiopulse:managed:end -->

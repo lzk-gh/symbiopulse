@@ -44,6 +44,16 @@ SymbioPulse is not Cursor-specific. The MCP runtime writes lightweight protocol 
 
 Each file points the agent to the same MCP-first workflow: sniff first, check DNA before edits, form synapses after successful work, and record reusable skills or durable constraints.
 
+If a protocol file already exists in the user's project, SymbioPulse preserves the user's content and only appends or refreshes a marked managed block:
+
+```markdown
+<!-- symbiopulse:managed:start -->
+...
+<!-- symbiopulse:managed:end -->
+```
+
+Content outside that block is never rewritten by protocol injection.
+
 ## Installation
 
 ### MCP Clients

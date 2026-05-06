@@ -3,7 +3,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from symbiopulse.core.auto import agent_protocols, ensure_workspace_ready
+from symbiopulse.core.auto import (
+    MANAGED_BLOCK_START,
+    agent_protocols,
+    ensure_workspace_ready,
+)
 from symbiopulse.core.genome import SymbioWorkspace
 
 
@@ -39,6 +43,26 @@ class TestAutoRuntime(unittest.TestCase):
         self.assertIn("GEMINI.md", paths)
         self.assertIn(".cursor/rules/symbiopulse.mdc", paths)
         self.assertIn(".github/copilot-instructions.md", paths)
+
+    @patch("symbiopulse.engines.olfactory.litellm", None)
+    def test_injection_preserves_existing_user_protocol_content(self):
+        user_content = "# Project Agent Rules\n\nKeep local architecture notes intact.\n"
+        (self.test_dir / "AGENTS.md").write_text(user_content, encoding="utf-8")
+
+        ensure_workspace_ready(str(self.test_dir))
+
+        content = (self.test_dir / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn(user_content.strip(), content)
+        self.assertIn(MANAGED_BLOCK_START, content)
+        self.assertIn("SymbioPulse Autonomous MCP Protocol", content)
+
+    @patch("symbiopulse.engines.olfactory.litellm", None)
+    def test_injection_updates_managed_protocol_block_once(self):
+        ensure_workspace_ready(str(self.test_dir))
+        ensure_workspace_ready(str(self.test_dir))
+
+        content = (self.test_dir / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertEqual(content.count(MANAGED_BLOCK_START), 1)
 
     @patch("symbiopulse.engines.olfactory.litellm", None)
     def test_reindex_prunes_stale_relations(self):

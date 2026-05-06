@@ -1,3 +1,4 @@
+<!-- symbiopulse:managed:start -->
 # SymbioPulse Autonomous MCP Protocol
 
 Audience: Gemini agents.
@@ -15,3 +16,4 @@ This project uses SymbioPulse as the MCP-native memory and context layer. When t
 ## Fallback
 
 If MCP tools are not available in the current client, proceed with native code search and mention that SymbioPulse was unavailable. Do not invent MCP results.
+<!-- symbiopulse:managed:end -->
