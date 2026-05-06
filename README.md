@@ -36,7 +36,7 @@ SymbioPulse is not Cursor-specific. The MCP runtime writes lightweight protocol 
 | :--- | :--- |
 | Codex / OpenAI agents | `AGENTS.md` |
 | Claude Code | `CLAUDE.md` |
-| Gemini CLI | `GEMINI.md` |
+| Gemini agents | `GEMINI.md` |
 | Cursor | `.cursor/rules/symbiopulse.mdc`, `.cursorrules` |
 | GitHub Copilot | `.github/copilot-instructions.md` |
 | Windsurf | `.windsurfrules` |
@@ -86,4 +86,4 @@ The MCP runtime also writes lightweight agent protocol files so compatible agent
 3. **Resonator Engine:** file-level resonance ranking inside scented zones.
 4. **Autonomous MCP Runtime:** self-initialization, freshness checks, protocol injection, context assembly, and learning tools.
 
-There is no separate CLI workflow or background watcher. MCP is the product surface.
+There is no separate user-facing workflow or background watcher. MCP is the product surface.

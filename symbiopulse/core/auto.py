@@ -20,7 +20,7 @@ def agent_protocols() -> List[AgentProtocol]:
     return [
         AgentProtocol("Codex / OpenAI agents", "AGENTS.md", _markdown_protocol("Codex / OpenAI agents")),
         AgentProtocol("Claude Code", "CLAUDE.md", _markdown_protocol("Claude Code")),
-        AgentProtocol("Gemini CLI", "GEMINI.md", _markdown_protocol("Gemini CLI")),
+        AgentProtocol("Gemini agents", "GEMINI.md", _markdown_protocol("Gemini agents")),
         AgentProtocol("Cursor rules", ".cursor/rules/symbiopulse.mdc", _cursor_mdc()),
         AgentProtocol("Cursor legacy", ".cursorrules", _plain_rules_protocol()),
         AgentProtocol("GitHub Copilot", ".github/copilot-instructions.md", _markdown_protocol("GitHub Copilot")),
@@ -33,7 +33,7 @@ def ensure_workspace_ready(root_dir: str = ".", force_scan: bool = False) -> Tup
     """
     Initializes the workspace and keeps the neural map fresh enough for MCP-only usage.
     This is intentionally callable from every MCP tool, so the developer does not need
-    a separate CLI watcher or bootstrap command.
+    a separate watcher or bootstrap command.
     """
     workspace = SymbioWorkspace(cwd=root_dir)
     if not workspace.is_initialized():

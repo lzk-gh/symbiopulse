@@ -22,7 +22,7 @@ class TestAutoRuntime(unittest.TestCase):
             shutil.rmtree(self.test_dir)
 
     @patch("symbiopulse.engines.olfactory.litellm", None)
-    def test_ensure_workspace_ready_scans_without_cli(self):
+    def test_ensure_workspace_ready_scans_for_mcp_runtime(self):
         workspace, status = ensure_workspace_ready(str(self.test_dir))
 
         self.assertTrue(status["scan_performed"])

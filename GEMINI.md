@@ -1,6 +1,6 @@
 # SymbioPulse Autonomous MCP Protocol
 
-Audience: Gemini CLI.
+Audience: Gemini agents.
 
 This project uses SymbioPulse as the MCP-native memory and context layer. When the `symbiopulse` MCP server is available, use it as the first source of project context.
 
