@@ -4,7 +4,13 @@ SymbioPulse is an MCP-first context layer for AI coding agents. It builds a pers
 
 The developer should only need to load the MCP server. Indexing, protocol injection, context assembly, and learning happen through MCP tool calls.
 
+## Visual Overview
+
+![SymbioPulse Architecture Overview](docs/assets/symbiopulse-architecture-overview.png)
+
 ## Core Loop
+
+![SymbioPulse Core Loop](docs/assets/symbiopulse-core-loop.png)
 
 1. **Environmental Pruning:** Ignore runtime noise such as `.git`, `.symbio`, `.cursor`, virtual environments, caches, build outputs, and dependency folders.
 2. **Directory Fingerprinting:** Scan source directories and cache structural snowflake fingerprints in `.symbio/fingerprints.json`.
@@ -15,6 +21,8 @@ The developer should only need to load the MCP server. Indexing, protocol inject
 7. **Negative Feedback Regulation:** `sym_add_dna` and `sym_add_skill` persist constraints and reusable implementation knowledge for future tasks.
 
 ## MCP Tools
+
+![SymbioPulse MCP Tool Workflow](docs/assets/symbiopulse-mcp-tool-workflow.png)
 
 | Tool | Purpose |
 | :--- | :--- |
@@ -56,6 +64,8 @@ Content outside that block is never rewritten by protocol injection.
 
 ## Runtime State
 
+![SymbioPulse Runtime State and Knowledge Model](docs/assets/symbiopulse-runtime-state-knowledge-model.png)
+
 SymbioPulse writes project-local memory under `.symbio/`:
 
 - `scents.json`: directory scent map.
@@ -94,36 +104,12 @@ Restart Cursor after installing `uv` so the GUI process can see `uvx` on `PATH`.
 
 ### Cursor / MCP Clients
 
-For a normal PyPI release:
-
 ```json
 {
   "mcpServers": {
     "symbiopulse": {
       "command": "uvx",
       "args": ["--from", "symbiopulse", "sym-mcp"]
-    }
-  }
-}
-```
-
-For TestPyPI builds, pin the published test version and add PyPI as the dependency fallback:
-
-```json
-{
-  "mcpServers": {
-    "symbiopulse": {
-      "command": "uvx",
-      "args": [
-        "--index-url",
-        "https://test.pypi.org/simple/",
-        "--extra-index-url",
-        "https://pypi.org/simple/",
-        "--refresh",
-        "--from",
-        "symbiopulse==0.1.12",
-        "sym-mcp"
-      ]
     }
   }
 }
@@ -149,21 +135,6 @@ pip install -e ".[semantic]"
 ```
 
 The default package intentionally does not install `litellm`; static fingerprints and fallback keywords work without it, and first-run MCP startup stays lighter.
-
-### Build And Publish TestPyPI
-
-```powershell
-Remove-Item -Recurse -Force dist, build, *.egg-info
-python -m pip install --upgrade build twine
-python -m build
-python -m twine upload --repository testpypi dist/*
-```
-
-Install the test build manually:
-
-```powershell
-pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ symbiopulse==0.1.12
-```
 
 ### Smoke Tests In Cursor
 
@@ -218,7 +189,19 @@ Cursor logs dependency downloads as `[error]`
 
 Cursor still injects the old protocol text
 
-- Pin the new version and include `--refresh` in the `uvx` args.
+- Include `--refresh` in the `uvx` args once to force a clean tool environment:
+
+```json
+{
+  "mcpServers": {
+    "symbiopulse": {
+      "command": "uvx",
+      "args": ["--refresh", "--from", "symbiopulse", "sym-mcp"]
+    }
+  }
+}
+```
+
 - Run `sym_initialize` once so the managed protocol block is refreshed.
 - Check that `.cursor/rules/symbiopulse.mdc` contains `## Mandatory Tool Use`, not the old `## Required Workflow`.
 
