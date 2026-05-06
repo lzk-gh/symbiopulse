@@ -94,36 +94,12 @@ Restart Cursor after installing `uv` so the GUI process can see `uvx` on `PATH`.
 
 ### Cursor / MCP Clients
 
-For a normal PyPI release:
-
 ```json
 {
   "mcpServers": {
     "symbiopulse": {
       "command": "uvx",
       "args": ["--from", "symbiopulse", "sym-mcp"]
-    }
-  }
-}
-```
-
-For TestPyPI builds, pin the published test version and add PyPI as the dependency fallback:
-
-```json
-{
-  "mcpServers": {
-    "symbiopulse": {
-      "command": "uvx",
-      "args": [
-        "--index-url",
-        "https://test.pypi.org/simple/",
-        "--extra-index-url",
-        "https://pypi.org/simple/",
-        "--refresh",
-        "--from",
-        "symbiopulse==0.1.12",
-        "sym-mcp"
-      ]
     }
   }
 }
@@ -149,21 +125,6 @@ pip install -e ".[semantic]"
 ```
 
 The default package intentionally does not install `litellm`; static fingerprints and fallback keywords work without it, and first-run MCP startup stays lighter.
-
-### Build And Publish TestPyPI
-
-```powershell
-Remove-Item -Recurse -Force dist, build, *.egg-info
-python -m pip install --upgrade build twine
-python -m build
-python -m twine upload --repository testpypi dist/*
-```
-
-Install the test build manually:
-
-```powershell
-pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ symbiopulse==0.1.12
-```
 
 ### Smoke Tests In Cursor
 
@@ -218,7 +179,19 @@ Cursor logs dependency downloads as `[error]`
 
 Cursor still injects the old protocol text
 
-- Pin the new version and include `--refresh` in the `uvx` args.
+- Include `--refresh` in the `uvx` args once to force a clean tool environment:
+
+```json
+{
+  "mcpServers": {
+    "symbiopulse": {
+      "command": "uvx",
+      "args": ["--refresh", "--from", "symbiopulse", "sym-mcp"]
+    }
+  }
+}
+```
+
 - Run `sym_initialize` once so the managed protocol block is refreshed.
 - Check that `.cursor/rules/symbiopulse.mdc` contains `## Mandatory Tool Use`, not the old `## Required Workflow`.
 
