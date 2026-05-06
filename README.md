@@ -4,7 +4,13 @@ SymbioPulse is an MCP-first context layer for AI coding agents. It builds a pers
 
 The developer should only need to load the MCP server. Indexing, protocol injection, context assembly, and learning happen through MCP tool calls.
 
+## Visual Overview
+
+![SymbioPulse Architecture Overview](docs/assets/symbiopulse-architecture-overview.png)
+
 ## Core Loop
+
+![SymbioPulse Core Loop](docs/assets/symbiopulse-core-loop.png)
 
 1. **Environmental Pruning:** Ignore runtime noise such as `.git`, `.symbio`, `.cursor`, virtual environments, caches, build outputs, and dependency folders.
 2. **Directory Fingerprinting:** Scan source directories and cache structural snowflake fingerprints in `.symbio/fingerprints.json`.
@@ -15,6 +21,8 @@ The developer should only need to load the MCP server. Indexing, protocol inject
 7. **Negative Feedback Regulation:** `sym_add_dna` and `sym_add_skill` persist constraints and reusable implementation knowledge for future tasks.
 
 ## MCP Tools
+
+![SymbioPulse MCP Tool Workflow](docs/assets/symbiopulse-mcp-tool-workflow.png)
 
 | Tool | Purpose |
 | :--- | :--- |
@@ -55,6 +63,8 @@ If a protocol file already exists in the user's project, SymbioPulse preserves t
 Content outside that block is never rewritten by protocol injection.
 
 ## Runtime State
+
+![SymbioPulse Runtime State and Knowledge Model](docs/assets/symbiopulse-runtime-state-knowledge-model.png)
 
 SymbioPulse writes project-local memory under `.symbio/`:
 
