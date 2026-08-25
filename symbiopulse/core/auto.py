@@ -1,11 +1,16 @@
-import os
+import hashlib
+import threading
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from .genome import SymbioWorkspace
+from filelock import FileLock, Timeout
+
 from ..engines.olfactory import OlfactoryEngine
+from ..indexing.path_filter import ScanBudgetExceeded
+from .genome import SymbioWorkspace
 
 
 @dataclass(frozen=True)
@@ -18,6 +23,26 @@ class AgentProtocol:
 
 MANAGED_BLOCK_START = "<!-- symbiopulse:managed:start -->"
 MANAGED_BLOCK_END = "<!-- symbiopulse:managed:end -->"
+
+
+@dataclass
+class _ProjectRuntime:
+    root: Path
+    workspace: SymbioWorkspace
+    lock: threading.RLock
+    state_signature: Tuple[Tuple[int, int], ...] = ()
+    loaded: bool = False
+    protocol_injected: bool = False
+    index_state: str = "ready"
+    scan_reason: str = ""
+    pending_force: bool = False
+    last_refresh_requested: float = 0.0
+
+
+_RUNTIMES: Dict[str, _ProjectRuntime] = {}
+_RUNTIMES_LOCK = threading.RLock()
+_INDEX_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="symbiopulse-index")
+_INDEX_JOBS: Dict[str, Future] = {}
 
 
 def agent_protocols() -> List[AgentProtocol]:
@@ -34,43 +59,211 @@ def agent_protocols() -> List[AgentProtocol]:
     ]
 
 
-def ensure_workspace_ready(root_dir: str = ".", force_scan: bool = False) -> Tuple[SymbioWorkspace, Dict[str, object]]:
+def ensure_workspace_ready(
+    root_dir: str = ".",
+    force_scan: bool = False,
+    scan_if_missing: bool = True,
+) -> Tuple[SymbioWorkspace, Dict[str, object]]:
     """
-    Initializes the workspace and keeps the neural map fresh enough for MCP-only usage.
-    This is intentionally callable from every MCP tool, so the developer does not need
-    a separate watcher or bootstrap command.
+    Open the last complete local snapshot. Native callers may opt into a bounded initial
+    scan; MCP query handlers pass ``scan_if_missing=False`` so reads never walk the tree.
     """
-    workspace = SymbioWorkspace(cwd=root_dir)
-    if not workspace.is_initialized():
-        workspace.init_workspace()
-    workspace.load_state()
-    workspace.compact_rules()
+    root = Path(root_dir).resolve()
+    runtime = _get_runtime(root)
+    with runtime.lock:
+        workspace = runtime.workspace
+        if not workspace.is_initialized():
+            workspace = SymbioWorkspace(str(root))
+            runtime.workspace = workspace
+            runtime.loaded = False
+            runtime.state_signature = ()
+            runtime.protocol_injected = False
+            workspace.init_workspace()
+        signature = _state_signature(workspace)
+        if not runtime.loaded or signature != runtime.state_signature:
+            workspace.load_state()
+            workspace.compact_rules()
+            runtime.state_signature = _state_signature(workspace)
+            runtime.loaded = True
 
-    status: Dict[str, object] = {
-        "initialized": True,
-        "scan_performed": False,
-        "scan_reason": "",
+    snapshot_state = "ready" if workspace.scent_map and workspace.fingerprints else "warming_up"
+    with _RUNTIMES_LOCK:
+        index_state = runtime.index_state if runtime.index_state in {"indexing", "degraded"} else snapshot_state
+        status: Dict[str, object] = {
+            "initialized": True,
+            "scan_performed": False,
+            "scan_reason": runtime.scan_reason,
+            "index_state": index_state,
+            "job_id": _job_id(root) if index_state == "indexing" else None,
+        }
+
+    if force_scan or (scan_if_missing and status["index_state"] == "warming_up"):
+        scan_status = _scan_workspace(root, force=force_scan)
+        status.update(scan_status)
+        with _RUNTIMES_LOCK:
+            runtime.index_state = scan_status.get("index_state", "degraded")
+            runtime.scan_reason = scan_status.get("scan_reason", "")
+        if scan_status.get("scan_performed"):
+            with runtime.lock:
+                workspace.load_state()
+                runtime.state_signature = _state_signature(workspace)
+                runtime.loaded = True
+
+    with runtime.lock:
+        if not runtime.protocol_injected:
+            status["protocol_files"] = inject_agent_protocol(str(root))
+            runtime.protocol_injected = True
+        else:
+            status["protocol_files"] = []
+    return workspace, status
+
+
+def schedule_workspace_refresh(
+    root_dir: str = ".",
+    force: bool = False,
+    min_interval_seconds: float = 300.0,
+) -> Dict[str, object]:
+    """Submit an idempotent process-local refresh; a cross-process lock elects one scanner."""
+    root = Path(root_dir).resolve()
+    key = str(root)
+    with _RUNTIMES_LOCK:
+        runtime = _get_runtime(root)
+        existing = _INDEX_JOBS.get(key)
+        if existing is not None and not existing.done():
+            if force:
+                runtime.pending_force = True
+            return {
+                "index_state": "indexing",
+                "job_id": _job_id(root),
+                "scheduled": False,
+                "queued_force": runtime.pending_force,
+            }
+        now = time.monotonic()
+        if not force and now - runtime.last_refresh_requested < min_interval_seconds:
+            return {
+                "index_state": runtime.index_state,
+                "job_id": None,
+                "scheduled": False,
+                "queued_force": False,
+            }
+        runtime.last_refresh_requested = now
+        runtime.index_state = "indexing"
+        runtime.scan_reason = ""
+        future = _INDEX_EXECUTOR.submit(_run_scheduled_scan, root, force)
+        _INDEX_JOBS[key] = future
+    return {
+        "index_state": "indexing",
+        "job_id": _job_id(root),
+        "scheduled": True,
+        "queued_force": False,
     }
 
-    if force_scan or _needs_scan(Path(root_dir), workspace):
-        reason = "forced" if force_scan else _scan_reason(Path(root_dir), workspace)
-        olfactory = OlfactoryEngine(root_dir=root_dir)
+
+def _run_scheduled_scan(root: Path, force: bool) -> Dict[str, object]:
+    result = _scan_workspace(root, force)
+    key = str(root)
+    with _RUNTIMES_LOCK:
+        runtime = _get_runtime(root)
+        rerun_force = runtime.pending_force and not force
+        runtime.pending_force = False
+        runtime.index_state = result.get("index_state", "degraded")
+        runtime.scan_reason = result.get("scan_reason", "")
+        if rerun_force:
+            runtime.index_state = "indexing"
+            future = _INDEX_EXECUTOR.submit(_run_scheduled_scan, root, True)
+            _INDEX_JOBS[key] = future
+        else:
+            _INDEX_JOBS.pop(key, None)
+    return result
+
+
+def _get_runtime(root: Path) -> _ProjectRuntime:
+    key = str(root)
+    with _RUNTIMES_LOCK:
+        runtime = _RUNTIMES.get(key)
+        if runtime is None:
+            runtime = _ProjectRuntime(root, SymbioWorkspace(str(root)), threading.RLock())
+            _RUNTIMES[key] = runtime
+        return runtime
+
+
+def _scan_workspace(root: Path, force: bool = False) -> Dict[str, object]:
+    workspace = SymbioWorkspace(str(root))
+    workspace.symbio_dir.mkdir(exist_ok=True)
+    scan_lock = FileLock(workspace.scan_lock_file)
+    try:
+        scan_lock.acquire(timeout=0)
+    except Timeout:
+        return {
+            "scan_performed": False,
+            "scan_reason": "another process owns the index scan",
+            "index_state": "indexing",
+        }
+
+    try:
+        workspace.load_state()
+        olfactory = OlfactoryEngine(root_dir=str(root))
         scent_map, mtime_map = olfactory.scan(
             workspace.scent_map,
             workspace.mtime_map,
+            mode="full" if force else "standard",
             workspace=workspace,
         )
         workspace.scent_map = scent_map
         workspace.mtime_map = mtime_map
         workspace.fingerprints = olfactory.fingerprint_map
-        _prune_stale_relations(Path(root_dir), workspace)
-        workspace.save_state()
-        status["scan_performed"] = True
-        status["scan_reason"] = reason
+        _prune_stale_relations(root, workspace)
+        workspace.compact_relations()
+        workspace.publish_index_state(
+            scent_map,
+            olfactory.fingerprint_map,
+            mtime_map,
+            workspace.relations,
+        )
+        return {
+            "scan_performed": True,
+            "scan_reason": "forced" if force else "initial snapshot missing",
+            "index_state": "ready",
+        }
+    except ScanBudgetExceeded as error:
+        return {
+            "scan_performed": False,
+            "scan_reason": str(error),
+            "index_state": "degraded",
+        }
+    except Exception as error:
+        return {
+            "scan_performed": False,
+            "scan_reason": f"scan failed: {error}",
+            "index_state": "degraded",
+        }
+    finally:
+        scan_lock.release()
 
-    injected = inject_agent_protocol(root_dir)
-    status["protocol_files"] = injected
-    return workspace, status
+
+def _state_signature(workspace: SymbioWorkspace) -> Tuple[Tuple[int, int], ...]:
+    paths = (
+        workspace.synapse_file,
+        workspace.dna_file,
+        workspace.scent_file,
+        workspace.fingerprint_file,
+        workspace.skills_file,
+        workspace.mtime_file,
+        workspace.relations_file,
+    )
+    signature = []
+    for path in paths:
+        try:
+            stat_result = path.stat()
+            signature.append((stat_result.st_mtime_ns, stat_result.st_size))
+        except OSError:
+            signature.append((0, 0))
+    return tuple(signature)
+
+
+def _job_id(root: Path) -> str:
+    digest = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:12]
+    return f"index:{digest}"
 
 
 def inject_agent_protocol(root_dir: str = ".") -> List[str]:
@@ -158,44 +351,6 @@ def describe_zone(workspace: SymbioWorkspace, zone: str) -> str:
     )
 
 
-def _needs_scan(root: Path, workspace: SymbioWorkspace) -> bool:
-    if not workspace.scent_map or not workspace.fingerprints:
-        return True
-    return bool(_scan_reason(root, workspace))
-
-
-def _scan_reason(root: Path, workspace: SymbioWorkspace) -> str:
-    for zone in workspace.scent_map:
-        if not (root / zone).exists():
-            return f"cached zone missing: {zone}"
-
-    newest_source_mtime = 0.0
-    for current_root, dirs, files in os.walk(root):
-        rel_root = os.path.relpath(current_root, root).replace("\\", "/")
-        if rel_root == ".":
-            rel_root = ""
-        if _is_runtime_dir(rel_root):
-            dirs[:] = []
-            continue
-        dirs[:] = [d for d in dirs if not _is_runtime_dir(f"{rel_root}/{d}".strip("/"))]
-        for name in files:
-            path = Path(current_root) / name
-            if _is_runtime_dir(str(path.relative_to(root)).replace("\\", "/")):
-                continue
-            try:
-                newest_source_mtime = max(newest_source_mtime, path.stat().st_mtime)
-            except OSError:
-                continue
-
-    try:
-        newest_index_mtime = workspace.scent_file.stat().st_mtime
-    except OSError:
-        newest_index_mtime = max(workspace.mtime_map.values() or [0.0])
-    if newest_source_mtime > newest_index_mtime:
-        return "source files changed after last index"
-    return ""
-
-
 def _prune_stale_relations(root: Path, workspace: SymbioWorkspace) -> None:
     valid_sources = {
         path
@@ -212,32 +367,6 @@ def _prune_stale_relations(root: Path, workspace: SymbioWorkspace) -> None:
         if targets:
             pruned[source] = targets
     workspace.relations = pruned
-
-
-def _is_runtime_dir(rel_path: str) -> bool:
-    parts = {part for part in rel_path.split("/") if part}
-    ignored = {
-        ".git",
-        ".symbio",
-        ".venv",
-        ".cursor",
-        ".github",
-        ".idea",
-        ".vscode",
-        ".pytest_cache",
-        ".mypy_cache",
-        ".ruff_cache",
-        "venv",
-        "node_modules",
-        "__pycache__",
-        "dist",
-        "build",
-        ".next",
-        "coverage",
-        "htmlcov",
-        "target",
-    }
-    return bool(parts & ignored)
 
 
 def _cursor_mdc_header() -> str:

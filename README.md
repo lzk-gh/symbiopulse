@@ -26,15 +26,15 @@ The developer should only need to load the MCP server. Indexing, protocol inject
 
 | Tool | Purpose |
 | :--- | :--- |
-| `sym_sniff(intent)` | Primary context entry. Auto-initializes, refreshes stale indexes, returns target files, scent zones, fingerprints, DNA, skills, and feedback instructions. |
+| `sym_sniff(intent)` | Primary context entry. Reads the last complete snapshot without scanning; if no snapshot exists, schedules a bounded background index and returns `warming_up`. |
 | `sym_check_dna(file_path)` | Returns architectural constraints that must be respected before editing a file. |
 | `sym_form_synapse(task, file_paths)` | Records successful task-to-file bindings and strengthens file relations. |
 | `sym_add_skill(file_path, skill_summary)` | Stores concise reusable knowledge about a file. |
 | `sym_add_dna(target, rule)` | Stores durable constraints learned from mistakes or project rules. |
 | `sym_fetch_dna()` | Returns all recorded DNA constraints. |
-| `sym_status()` | Shows current memory, scent, fingerprint, and skill counts. |
-| `sym_initialize()` | Forces initialization and protocol injection. Usually optional because tools self-initialize. |
-| `sym_reindex()` | Forces a full project reindex. |
+| `sym_status()` | Shows current memory, scent, fingerprint, and skill counts without refreshing the index. |
+| `sym_initialize()` | Initializes storage/protocol files and schedules the first bounded index job. |
+| `sym_reindex()` | Schedules a bounded full project reindex and returns immediately. |
 
 ## Agent Support
 
@@ -134,7 +134,7 @@ Enable optional LLM-enhanced semantic scent generation only when needed:
 pip install -e ".[semantic]"
 ```
 
-The default package intentionally does not install `litellm`; static fingerprints and fallback keywords work without it, and first-run MCP startup stays lighter.
+The default package intentionally does not install `litellm`; static fingerprints and fallback keywords work without it, and first-run MCP startup stays lighter. Installing the extra is not enough to enable network calls: set `"semantic_enabled": true` explicitly in `.symbio/config.json`. Ambient API keys never enable semantic scanning by themselves.
 
 ### Smoke Tests In Cursor
 
