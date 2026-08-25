@@ -15,7 +15,7 @@ setup(
     install_requires=[
         "filelock>=3.12.0",
         "pathspec>=0.11.0",
-        "mcp>=1.0.0"
+        "mcp>=1.0.0,<2.0.0"
     ],
     extras_require={
         "semantic": ["litellm>=1.0.0"]

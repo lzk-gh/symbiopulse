@@ -109,6 +109,14 @@ class TestWorkspaceMemory(unittest.TestCase):
             ["Route cross-module state through explicit workspace contracts"],
         )
 
+    def test_cjk_memory_reuses_character_ngrams(self):
+        self.workspace.strengthen_synapse("修复查询每次扫描工作区", "src/query.py")
+
+        memory = self.workspace.get_o1_memory("解决查询扫描工作区卡顿")
+
+        self.assertIsNotNone(memory)
+        self.assertEqual(memory.target_filepath, "src/query.py")
+
 
 if __name__ == "__main__":
     unittest.main()

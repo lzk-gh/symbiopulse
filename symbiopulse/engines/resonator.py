@@ -1,7 +1,8 @@
-import os
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from difflib import SequenceMatcher
+
+from ..indexing.terms import MAX_QUERY_CANDIDATES, search_terms
 
 class ResonatorEngine:
     """
@@ -16,8 +17,17 @@ class ResonatorEngine:
         matches = self.trigger_resonance_multi(intent, zones, top_n=1)
         return matches[0] if matches else None
 
-    def trigger_resonance_multi(self, intent: str, zones: List[str], top_n: int = 3) -> List[str]:
+    def trigger_resonance_multi(
+        self,
+        intent: str,
+        zones: List[str],
+        top_n: int = 3,
+        fingerprints: Optional[Dict[str, Dict]] = None,
+    ) -> List[str]:
         """Returns top N matching files based on resonance score."""
+        if fingerprints is not None:
+            return self._rank_snapshot(intent, zones, fingerprints, top_n)
+
         scores: List[Tuple[str, float]] = []
         intent_lower = intent.lower()
 
@@ -51,6 +61,58 @@ class ResonatorEngine:
         # Sort by score descending
         scores.sort(key=lambda x: x[1], reverse=True)
         return [path for path, score in scores[:top_n]]
+
+    def _rank_snapshot(
+        self,
+        intent: str,
+        zones: List[str],
+        fingerprints: Dict[str, Dict],
+        top_n: int,
+    ) -> List[str]:
+        """Rank bounded fingerprint candidates without opening project files."""
+        intent_terms = search_terms(intent)
+        scores: Dict[str, float] = {}
+        for zone in zones[:12]:
+            fingerprint = fingerprints.get(zone, {})
+            zone_terms = search_terms(
+                " ".join(
+                    [
+                        zone,
+                        *fingerprint.get("keywords", []),
+                        *fingerprint.get("symbols", []),
+                    ]
+                )
+            )
+            zone_score = len(intent_terms & zone_terms) * 0.25
+            files = fingerprint.get("files", [])
+            file_index = fingerprint.get("file_index")
+            if isinstance(file_index, dict):
+                postings = [file_index[term] for term in intent_terms if term in file_index]
+                candidate_indices = set()
+                for posting in sorted(postings, key=len):
+                    for index in posting:
+                        if isinstance(index, int) and 0 <= index < len(files):
+                            candidate_indices.add(index)
+                            if len(candidate_indices) >= MAX_QUERY_CANDIDATES:
+                                break
+                    if len(candidate_indices) >= MAX_QUERY_CANDIDATES:
+                        break
+            else:
+                candidate_indices = range(min(len(files), MAX_QUERY_CANDIDATES))
+
+            for index in candidate_indices:
+                filename = files[index]
+                relative = (Path(zone) / filename).as_posix()
+                file_terms = search_terms(relative)
+                overlap = len(intent_terms & file_terms)
+                if overlap == 0:
+                    continue
+                score = overlap * 1.5 + zone_score
+                if Path(filename).stem.lower() in intent.lower():
+                    score += 2.0
+                scores[relative] = max(scores.get(relative, 0.0), score)
+        ranked = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+        return [path for path, _ in ranked[:top_n]]
 
     def expand_context(self, 
                        primary_file: str, 

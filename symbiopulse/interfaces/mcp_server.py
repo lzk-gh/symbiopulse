@@ -1,5 +1,7 @@
-import sys
 import asyncio
+import contextvars
+import functools
+import sys
 from pathlib import Path
 from typing import List
 
@@ -15,9 +17,11 @@ from ..core.auto import (
     build_skill_context,
     describe_zone,
     ensure_workspace_ready,
+    schedule_workspace_refresh,
 )
 from ..engines.olfactory import OlfactoryEngine
 from ..engines.resonator import ResonatorEngine
+from ..indexing.path_filter import PathFilter
 
 # Initialize the MCP Server
 mcp = FastMCP("SymbioPulse")
@@ -33,11 +37,14 @@ async def sym_sniff(intent: str) -> str:
     If results are insufficient, continue manually and then call sym_form_synapse
     with the files that mattered.
     """
-    workspace, readiness = await asyncio.to_thread(ensure_workspace_ready)
+    workspace, readiness = await _open_snapshot()
+    refresh = schedule_workspace_refresh()
+    if refresh.get("scheduled") or refresh.get("index_state") == "indexing":
+        readiness.update(refresh)
     
     # 1. Synaptic Reflex (Proven Experience)
     memory = workspace.get_o1_memory(intent)
-    if memory:
+    if memory and _is_valid_memory_target(workspace.root, memory.target_filepath):
         resonator = ResonatorEngine()
         related_files = resonator.expand_context(memory.target_filepath, workspace.relations)
         files = [memory.target_filepath, *related_files]
@@ -56,8 +63,9 @@ async def sym_sniff(intent: str) -> str:
     if not workspace.scent_map:
         return (
             "# SymbioPulse Context\n\n"
-            "The neural map is still empty after automatic initialization. Search natively for this task, "
-            "then call `sym_form_synapse(task, file_paths)` with the correct files so the next run becomes direct."
+            "The neural map is warming up in the background; this query did not wait for a workspace scan. "
+            f"Job: `{refresh['job_id']}`. Search natively for this task, then call "
+            "`sym_form_synapse(task, file_paths)` with the correct files so the next run becomes direct."
         )
 
     # 3. Semantic Sniffing
@@ -80,7 +88,12 @@ async def sym_sniff(intent: str) -> str:
             )
             
         resonator = ResonatorEngine()
-        targets = resonator.trigger_resonance_multi(intent, zones, top_n=3)
+        targets = resonator.trigger_resonance_multi(
+            intent,
+            zones,
+            top_n=3,
+            fingerprints=workspace.fingerprints,
+        )
         
         if not targets:
             return _format_sniff_result(
@@ -118,44 +131,54 @@ async def sym_form_synapse(task: str, file_paths: List[str]) -> str:
     answer, code change, investigation, or manual fallback so future similar
     requests can use direct project memory.
     """
-    workspace, _ = await asyncio.to_thread(ensure_workspace_ready)
-    
-    normalized_paths = [_normalize_path(fp) for fp in file_paths if fp]
-    for fp in normalized_paths:
-        workspace.strengthen_synapse(task, fp)
-        
-    for i in range(len(normalized_paths)):
-        for j in range(i + 1, len(normalized_paths)):
-            workspace.strengthen_relation(normalized_paths[i], normalized_paths[j], weight=1.0)
+    workspace, _ = await _open_snapshot()
+
+    path_filter = PathFilter(str(workspace.root))
+    normalized_paths = []
+    errors = []
+    for file_path in file_paths:
+        normalized, error = _normalize_path(file_path, workspace.root, path_filter)
+        if error:
+            errors.append(f"`{file_path}`: {error}")
+        elif normalized and normalized not in normalized_paths:
+            normalized_paths.append(normalized)
+
+    if normalized_paths:
+        await _run_sync(workspace.record_feedback, task, normalized_paths)
+
+    error_text = ""
+    if errors:
+        error_text = "\n- Rejected: " + "; ".join(errors)
             
     return (
         "Synaptic connection established.\n"
         f"- Task: {task}\n"
         f"- Bound files: {', '.join(f'`{fp}`' for fp in normalized_paths)}\n"
         "- Next similar task can hit the exact intent or vocabulary-antigen memory directly."
+        f"{error_text}"
     )
 
 @mcp.tool()
 async def sym_add_skill(file_path: str, skill_summary: str) -> str:
     """Record a concise summary of a file's purpose."""
-    workspace, _ = await asyncio.to_thread(ensure_workspace_ready)
-    workspace.learn_skill(file_path, skill_summary)
+    workspace, _ = await _open_snapshot()
+    await _run_sync(workspace.learn_skill, file_path, skill_summary)
     return f"Skill extracted and bound to {file_path}."
 
 @mcp.tool()
 async def sym_add_dna(target: str, rule: str) -> str:
     """Add a new DNA constraint learned from a mistake."""
-    workspace, _ = await asyncio.to_thread(ensure_workspace_ready)
+    workspace, _ = await _open_snapshot()
     
     full_rule = f"[{target}] {rule}"
-    if workspace.add_dna_rule(full_rule):
+    if await _run_sync(workspace.add_dna_rule, full_rule):
         return f"DNA mutation recorded: {full_rule}"
     return "Rule already exists in DNA."
 
 @mcp.tool()
 async def sym_fetch_dna() -> str:
     """Retrieve the project's DNA constraints."""
-    workspace, _ = await asyncio.to_thread(ensure_workspace_ready)
+    workspace, _ = await _open_snapshot()
     
     if not workspace.dna_rules:
         return "No DNA rules established for this project yet."
@@ -170,7 +193,7 @@ async def sym_check_dna(file_path: str) -> str:
     Validate modifications to a specific file against project DNA rules before
     writing, patching, formatting, moving, or deleting that file.
     """
-    workspace, _ = await asyncio.to_thread(ensure_workspace_ready)
+    workspace, _ = await _open_snapshot()
     if not workspace.dna_rules:
         return "No DNA rules established. You may proceed."
         
@@ -182,19 +205,23 @@ async def sym_initialize() -> str:
     """
     Global Initialization. Injects the MANDATORY 'Learn-or-Die' protocol.
     """
-    workspace, readiness = await asyncio.to_thread(ensure_workspace_ready, ".", True)
+    workspace, readiness = await _open_snapshot()
+    refresh = schedule_workspace_refresh(force=not bool(workspace.scent_map))
+    readiness.update(refresh)
     return f"## SymbioPulse Autonomous MCP Ready\n\n{_status_text(workspace)}\n\nReadiness: {readiness}"
 
 @mcp.tool()
 async def sym_reindex() -> str:
     """Force a full neural map refresh from the current project files."""
-    workspace, readiness = await asyncio.to_thread(ensure_workspace_ready, ".", True)
-    return f"Reindexed project.\n\n{_status_text(workspace)}\n\nReadiness: {readiness}"
+    workspace, readiness = await _open_snapshot()
+    refresh = schedule_workspace_refresh(force=True)
+    readiness.update(refresh)
+    return f"Reindex scheduled.\n\n{_status_text(workspace)}\n\nReadiness: {readiness}"
 
 @mcp.tool()
 async def sym_status() -> str:
     """Get the current biological status of the SymbioPulse system."""
-    workspace, readiness = await asyncio.to_thread(ensure_workspace_ready)
+    workspace, readiness = await _open_snapshot()
     return f"{_status_text(workspace)}\n- Auto Scan: {readiness}"
 
 
@@ -216,7 +243,7 @@ def _format_sniff_result(
     skills = build_skill_context(workspace, files_for_skills)
     dna = build_dna_context(workspace)
 
-    scan_line = "fresh"
+    scan_line = readiness.get("index_state", "ready")
     if readiness.get("scan_performed"):
         scan_line = f"refreshed automatically ({readiness.get('scan_reason')})"
 
@@ -263,8 +290,43 @@ def _status_text(workspace) -> str:
     )
 
 
-def _normalize_path(path: str) -> str:
-    return str(Path(path)).replace("\\", "/")
+async def _open_snapshot():
+    return await _run_sync(ensure_workspace_ready, ".", False, False)
+
+
+async def _run_sync(function, *args):
+    """Python 3.8-compatible equivalent of asyncio.to_thread()."""
+    if hasattr(asyncio, "to_thread"):
+        return await asyncio.to_thread(function, *args)
+    loop = asyncio.get_running_loop()
+    context = contextvars.copy_context()
+    call = functools.partial(context.run, function, *args)
+    return await loop.run_in_executor(None, call)
+
+
+def _normalize_path(path: str, root: Path, path_filter: PathFilter):
+    if not path:
+        return None, "empty path"
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    try:
+        resolved = candidate.resolve(strict=False)
+        relative = resolved.relative_to(root.resolve()).as_posix()
+    except (OSError, ValueError):
+        return None, "PATH_OUTSIDE_ROOT"
+    if not resolved.is_file():
+        return None, "path does not identify an existing file"
+    reason = path_filter.ignore_reason(candidate, is_dir=False)
+    if reason:
+        return None, f"PATH_IGNORED ({reason})"
+    return relative, None
+
+
+def _is_valid_memory_target(root: Path, path: str) -> bool:
+    path_filter = PathFilter(str(root))
+    normalized, error = _normalize_path(path, root, path_filter)
+    return normalized is not None and error is None
 
 def run():
     """Entry point for the MCP server."""
