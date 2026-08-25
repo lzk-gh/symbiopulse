@@ -2,14 +2,14 @@ from setuptools import setup, find_packages
 
 setup(
     name="symbiopulse",
-    version="0.1.0",
+    version="0.2.0",
     author="SymbioPath Contributors",
     author_email="maintainers@symbiopulse.io",
     description="Code context manager with evolutionary instinct for AI agents",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     license="MIT",
-    url="https://github.com/symbiopulse/symbiopulse",
+    url="https://github.com/Orpheus-K/symbiopulse",
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
